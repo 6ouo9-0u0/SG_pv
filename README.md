@@ -25,4 +25,4 @@ The code analyzes **mutual authentication**, **secrecy of session keys**, and **
   Run the tool with:
 
 ```bash
-proverif puf_sg_auth.pv
+proverif SM.pv
