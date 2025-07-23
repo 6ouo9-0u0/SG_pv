@@ -1,0 +1,134 @@
+(* channel *)
+free sc:channel[private].  (* private *)
+free c:channel.
+
+(* session key *)
+free SK:bitstring[private].
+free XSK:bitstring[private].
+
+(* PUF function *)
+fun PUF(bitstring) : bitstring.
+
+(* hash funtion *)
+fun h(bitstring) : bitstring.
+
+fun FE_Gen_K(bitstring) : bitstring.  (* K *)
+fun FE_Gen_hd(bitstring) : bitstring. (* hd *)
+fun FE_Rep(bitstring, bitstring) : bitstring.
+
+(* XOR funtion *)
+fun xor(bitstring, bitstring) : bitstring.
+
+(* OR function *)
+fun con(bitstring, bitstring) : bitstring.
+
+(* event *)
+event beginSM(bitstring).
+event acceptSM(bitstring).
+event beginSP(bitstring).
+event acceptSP(bitstring).
+
+(*  TA  *)
+let TA =
+    new PIDy: bitstring;
+    new key : bitstring;
+    new CHy : bitstring;
+    new ry : bitstring;
+
+    out(sc, (PIDy, key, CHy, ry));
+    0.
+
+
+(*  SMy  *)
+let SMy =
+    in(sc, (PIDy:bitstring, key:bitstring, CHy:bitstring, ry:bitstring));
+
+    let Ry = PUF(CHy) in
+
+    let Ky = FE_Gen_K(Ry) in
+    let hdy = FE_Gen_hd(Ry) in
+
+    let Dy = xor(h(con(PIDy, con( CHy, con( Ky, hdy)))), key) in
+
+    let A = h(con(key, Dy)) in
+
+    let B =  h(con(key,ry)) in 
+
+    out(sc, (PIDy,B));
+
+    in(sc, (XK:bitstring));
+
+    let Ry' = PUF(CHy) in
+
+    let Ky' = FE_Rep(Ry', hdy) in
+
+    let key' = xor(Dy, h(con(PIDy,con(CHy,con(Ky',hdy))))) in
+
+    let A' = h(con(key,Dy)) in
+
+    if A' = A then
+    new rynew : bitstring;
+    new T1 : bitstring;
+
+    let C = h(con(key',rynew)) in
+
+    let a1 = xor(XK, h(con(key',ry))) in
+    let a2 = xor(XK,C) in
+    let a3 = h(con(a1,C)) in
+
+    event beginSM(PIDy);
+    out(c, (PIDy,a2,a3,T1));
+
+
+    in(c, (XT2:bitstring, XS2:bitstring, XS1:bitstring, Xa4:bitstring));
+    
+    let a4' = h(con(PIDy, C)) in
+    if a4' = Xa4 then
+    event acceptSP(PIDy);
+    let XPIDynew = xor(h(a1),XS1) in
+    let Knew = xor(h(a1),XS2) in
+    let XSK = h(con(C,con(T1,con(XT2,XPIDynew)))) in 
+
+    0.
+
+
+(*  SPz  *)
+let SPz =
+    new tz : bitstring; 
+
+    in(sc, (XPIDy:bitstring, XB:bitstring));
+
+    let PIDypre = XPIDy in
+    let PIDycur = XPIDy in
+
+    let K = xor(h(con(tz, XPIDy)), XB) in
+
+    out(sc, K);
+
+    in(c, (XXPIDy:bitstring, Xa2:bitstring, Xa3:bitstring, XT1 : bitstring));
+
+    if XXPIDy = PIDycur || XXPIDy = PIDypre then
+    let XC = xor(Xa2,K) in  (*XC = h(key || rynew)*)
+    let a3' = h(con(XC,h(con(tz,XXPIDy)))) in
+
+    if a3' = Xa3 then
+    let a4 = h(con(XXPIDy,XC)) in
+    event acceptSM(XPIDy);
+    new T2 : bitstring;
+    new PIDynew: bitstring;
+
+    let S1 = xor(h(xor(K,XB)),PIDynew) in
+    let S2 = h(xor(xor(K,XB),(xor(h(con(tz,PIDynew)),XB)))) in
+    let SK = h(con(XC,con(XT1,con(T2,PIDynew)))) in
+
+    event beginSP(XPIDy);
+    out(c, (T2,S1,S2,a4)); 
+   
+    0.
+
+
+query attacker(SK).
+query attacker(XSK).
+query PIDy:bitstring;inj-event(acceptSM(PIDy))==>inj-event(beginSM(PIDy)).
+query PIDy:bitstring;inj-event(acceptSP(PIDy))==>inj-event(beginSP(PIDy)).
+process (!TA | !SMy | !SPz)
